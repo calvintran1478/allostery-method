@@ -35,14 +35,13 @@ double get_shannon_entropy(double *x, int len, int num_bins, double bin_size, in
 
     // Compute shannon entropy
     double entropy = 0;
-    double log_len = log(len);
     for (int i = 0; i < num_bins; i++) {
         if (histogram_buffer[i] != 0) {
-            entropy -= histogram_buffer[i] * (log(histogram_buffer[i]) - log_len);
+            entropy -= histogram_buffer[i] * log(histogram_buffer[i]);
         }
     }
 
-    return entropy / len;
+    return (entropy / len) + log(len);
 }
 
 /*
@@ -65,14 +64,13 @@ double get_joint_entropy(double *x, double *y, int len, int num_bins, double bin
 
     // Compute joint entropy
     double entropy = 0;
-    double log_len = log(len);
     for (int i = 0; i < joint_histogram_buffer_len; i++) {
         if (joint_histogram_buffer[i] != 0) {
-            entropy -= joint_histogram_buffer[i] * (log(joint_histogram_buffer[i]) - log_len);
+            entropy -= joint_histogram_buffer[i] * log(joint_histogram_buffer[i]);
         }
     }
 
-    return entropy / len;
+    return (entropy / len) + log(len);
 }
 
 int next_var;
