@@ -85,88 +85,6 @@ double max_norm(Point point1, Point point2) {
     return (x_dist > y_dist) ? x_dist : y_dist;
 }
 
-/*
- *
- */
-double query_ball_point(IndexedValue *value_array, int length, double *radius_array) {
-    double total = 0;
-    for (int i = 0; i < length; i++) {
-        int step;
-        int lower_index;
-        int middle_index;
-        int higher_index;
-        double radius = radius_array[value_array[i].index];
-
-        // Find lower index
-        step = 1;
-        lower_index = i;
-        int left_index = -1;
-        while (lower_index >= 0 && value_array[i].value - value_array[lower_index].value < radius) {
-            lower_index -= step;
-            step << 1;
-        }
-
-        // Reverse previous step to get higher index
-        step >> 1;
-        higher_index = lower_index + step;
-
-        // Perform iterative binary search to find left index (left and right indices are inclusive)
-        while (left_index == -1) {
-            middle_index = (lower_index + higher_index) >> 1;
-            // Check if middle index is valid
-            if (middle_index >= 0 && value_array[i].value - value_array[middle_index].value < radius) {
-                // Check if the index to the left of the middle index is invalid
-                if ((middle_index - 1) < 0 || value_array[i].value - value_array[middle_index - 1].value >= radius) {
-                    // Found
-                    left_index = middle_index;
-                } else {
-                    // Search left
-                    higher_index = middle_index - 1;
-                }
-            } else {
-                // Search right
-                lower_index = middle_index + 1;
-            }
-        }
-
-        // Find starting boundary indices for binary search
-        step = 1;
-        higher_index = i;
-        int right_index = -1;
-        while (higher_index < length && value_array[higher_index].value - value_array[i].value < radius) {
-            higher_index += step;
-            step << 1;
-        }
-
-        // Reverse previous step to get higher index
-        step >> 1;
-        lower_index = higher_index - step;
-
-        // Perform iterative binary search to find left index (left and right indices are inclusive)
-        while (right_index == -1) {
-            middle_index = (lower_index + higher_index) >> 1;
-            // Check if middle index is valid
-            if (middle_index < length && value_array[middle_index].value - value_array[i].value < radius) {
-                // Check if the index to the right of the middle index is invalid
-                if ((middle_index + 1) >= length || value_array[middle_index + 1].value - value_array[i].value >= radius) {
-                    // Found
-                    right_index = middle_index;
-                } else {
-                    // Search right
-                    lower_index = middle_index + 1;
-                }
-            } else {
-                // Search left
-                higher_index = middle_index - 1;
-            }
-        }
-
-        total += psi(right_index - left_index + 1);
-    }
-
-    return total;
-}
-
 double query_ball_point_fast(IndexedValue *value_array, int length, double *radius_array, double *psi_values) {
     double total = 0;
     for (int i = 0; i < length; i++) {
@@ -441,61 +359,6 @@ void normalize_data_set(double *array, int length) {
     }
 }
 
-double _estimate_mi(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, int length, int k) {
-    // Construct point array
-    Point point_array[MAX_NUM_VALUES];
-    for (int i = 0; i < length; i++) {
-        point_array[i].coords[0] = x[x_value_array[i].index];
-        point_array[i].coords[1] = y[x_value_array[i].index];
-    }
-
-    // Consruct KDTree from data points
-    KDTree kdtree_array[MAX_NUM_VALUES];
-    construct_kdtree(kdtree_array, point_array, length);
-
-    // Calculate epsilon values
-    double eps[MAX_NUM_VALUES];
-    for (int i = 0; i < length; i++) {
-        Point point = { .coords[0] = x[i], .coords[1] = y[i] };
-        eps[i] = find_knearest_neighbour_distance(kdtree_array, point_array, length, point, k + 1);
-    }
-
-    // Calculate psi average based on x, y, and epsilon
-    double psi_avg = (query_ball_point(x_value_array, length, eps) + query_ball_point(y_value_array, length, eps)) / length;
-
-    return psi(length) + psi(k) - psi_avg;
-}
-
-double _estimate_mi_fast(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, int length, int k) {
-    // Construct point array
-    Point *point_array = malloc(sizeof(Point) * MAX_NUM_VALUES);
-    for (int i = 0; i < length; i++) {
-        point_array[i].coords[0] = x[x_value_array[i].index];
-        point_array[i].coords[1] = y[x_value_array[i].index];
-    }
-
-    // Consruct KDTree from data points
-    KDTree *kdtree_array = malloc(sizeof(KDTree) * MAX_NUM_VALUES);
-    construct_kdtree(kdtree_array, point_array, length);
-
-    // Calculate epsilon values
-    double *eps = malloc(sizeof(double) * MAX_NUM_VALUES);
-    for (int i = 0; i < length; i++) {
-        Point point = { .coords[0] = x[i], .coords[1] = y[i] };
-        eps[i] = find_knearest_neighbour_distance(kdtree_array, point_array, length, point, k + 1);
-    }
-
-    // Calculate psi average based on x, y, and epsilon
-    double psi_avg = (query_ball_point_fast(x_value_array, length, eps, psi_values) + query_ball_point_fast(y_value_array, length, eps, psi_values)) / length;
-
-    // Free allocated memory
-    free(point_array);
-    free(kdtree_array);
-    free(eps);
-
-    return psi_values[length] + psi_values[k] - psi_avg;
-}
-
 double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, int k) {
     // Construct point array
     for (int i = 0; i < length; i++) {
@@ -516,16 +379,6 @@ double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_arra
     double psi_avg = (query_ball_point_fast(x_value_array, length, eps, psi_values) + query_ball_point_fast(y_value_array, length, eps, psi_values)) / length;
 
     return psi_values[length] + psi_values[k] - psi_avg;
-}
-
-double _estimate_corr(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, int length, int k) {
-    double mi = _estimate_mi(x, y, x_value_array, y_value_array, length, k);
-    return mi <= 0 ? mi : sqrt(1 - exp(-2 * mi));
-}
-
-double _estimate_corr_fast(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, int length, int k) {
-    double mi = _estimate_mi_fast(x, y, x_value_array, y_value_array, psi_values, length, k);
-    return mi <= 0 ? mi : sqrt(1 - exp(-2 * mi));
 }
 
 double _estimate_corr_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, int k) {
@@ -586,45 +439,6 @@ DataShape read_csv(char *filename, double *buffer) {
 }
 
 /*
- * Estimate the mutual information between x and y using the Kraskov Estimator
- * for mutual information.
- *
- * x and y are treated as continuous random variables and should be of the same
- * length (specified using the 'length' parameter). k should be some positive
- * number less than or equal to the length.
- */
-double estimate_mi(double *x, double *y, int length, int k) {
-    // Initialize buffers for storing sorted x and y values
-    IndexedValue x_value_array[MAX_NUM_VALUES];
-    IndexedValue y_value_array[MAX_NUM_VALUES];
-    for (int i = 0; i < length; i++) {
-        x_value_array[i].value = x[i];
-        x_value_array[i].index = i;
-        y_value_array[i].value = y[i];
-        y_value_array[i].index = i;
-    }
-
-    // Sort x and y arrays in ascending order by value
-    qsort(x_value_array, length, sizeof(IndexedValue), compare_value);
-    qsort(y_value_array, length, sizeof(IndexedValue), compare_value);
-
-    return _estimate_mi(x, y, x_value_array, y_value_array, length, k);
-}
-
-/*
- * Compute the generalized correlation coefficient between x and y using the
- * Kraskov Estimator for mutual information.
- *
- * x and y are treated as continuous random variables and should be of the same
- * length (specified using the 'length' parameter). k should be some positive
- * number less than or equal to the length.
- */
-double estimate_corr(double *x, double *y, int length, int k) {
-    double mi = estimate_mi(x, y, length, k);
-    return mi <= 0 ? mi : sqrt(1 - exp(-2 * mi));
-}
-
-/*
  * Saves the given data matrix in a CSV file with the given name.
  */
 void save_data_matrix(char *filename, double *data_matrix, int num_variables) {
@@ -643,134 +457,6 @@ void save_data_matrix(char *filename, double *data_matrix, int num_variables) {
         }
         fprintf(file, "\n");
     }
-}
-
-/*
- * data1 is a 1D array with data whose first i * num_frames gets you the frames
- * length will be the number of observed values
- */
-double *combine_mi(double *data, int num_attributes, int num_variables, int num_entries_per_variable, int k, int p) {
-    // Determine valid attributes for each variable
-    int *valid_values = malloc(sizeof(int) * num_attributes * num_variables);
-    for (int i = 0; i < num_attributes; i++) {
-    	for (int j = 0; j < num_variables; j++) {
-            valid_values[(i * num_variables) + j] = 1;
-            for (int k = 0; k < num_entries_per_variable; k++) {
-                if (isnan(data[(i * num_variables * num_entries_per_variable) + (j * num_entries_per_variable) + k])) {
-                    valid_values[(i * num_variables) + j] = 0;
-                }
-            }
-        }
-    }
-
-    // Compute psi values
-    double psi_values[MAX_NUM_VALUES];
-    for (int i = 1; i <= num_entries_per_variable; i++) {
-        psi_values[i] = psi(i);
-    }
-
-    // Normalize values
-    for (int i = 0; i < num_attributes; i++) {
-        // Create pointers into the current attribute data buffer
-        int attribute_data_offset = i * num_variables * num_entries_per_variable;
-        double *attribute_data = data + attribute_data_offset;
-
-        for (int j = 0; j < num_variables; j++) {
-            // Create pointers into the current variable data buffer
-            int variable_data_offset = j * num_entries_per_variable;
-            double *variable_data = attribute_data + variable_data_offset;
-
-            // Normalize data set
-            normalize_data_set(variable_data, num_entries_per_variable);
-        }
-    }
-
-    // Sorted arrays compute once
-    IndexedValue *data_value_arrays = malloc(sizeof(IndexedValue) * num_attributes * num_variables * num_entries_per_variable);
-    for (int i = 0; i < num_attributes; i++) {
-        // Calculate offset into the current attribute data buffer
-        int attribute_data_offset = i * num_variables * num_entries_per_variable;
-
-        // Create pointers to the current data buffer to simplify and improve readability
-        double *attribute_data = data + attribute_data_offset;
-        IndexedValue *attribute_data_value_array = data_value_arrays + attribute_data_offset;
-
-        // Initialize data
-        for (int j = 0; j < num_variables; j++) {
-            // Calculate offset into the current variable data buffer
-            int variable_data_offset = j * num_entries_per_variable;
-
-            // Create pointers to the current variable buffer to simplify and improve readability
-            double *variable_data = attribute_data + variable_data_offset;
-            IndexedValue *variable_data_value_array = attribute_data_value_array + variable_data_offset;
-
-            // Initialize indexed data
-            for (int k = 0; k < num_entries_per_variable; k++) {
-                variable_data_value_array[k].value = variable_data[k];
-                variable_data_value_array[k].index = k;
-            }
-
-            // Sort initialized data arrays in ascending order by value
-            qsort(variable_data_value_array, num_entries_per_variable, sizeof(IndexedValue), compare_value);
-        }
-    }
-
-    // Allocate data matrix
-    double *data_matrix = malloc(sizeof(double) * num_variables * num_variables);
-
-    for (int i = 0; i < num_variables; i++) {
-    	data_matrix[i * num_variables + i] = 1;
-        for (int j = i + 1; j < num_variables; j++) {
-            data_matrix[i * num_variables + j] = 0;
-            int num_correlations = 0;
-
-            // Compare all combinations of attributes between variables i and j
-            for (int ai = 0; ai < num_attributes; ai++) {
-                for (int aj = 0; aj < num_attributes; aj++) {
-                    // If attributes are valid for both variables perform correlation calculation
-                    if (valid_values[ai * num_variables + i] && valid_values[aj * num_variables + j]) {
-                        // Create pointers to the current attribute buffers
-                        double *attribute_data_i = data + (ai * num_variables * num_entries_per_variable);
-                        double *attribute_data_j = data + (aj * num_variables * num_entries_per_variable);
-                        IndexedValue *attribute_data_i_value_array = data_value_arrays + (ai * num_variables * num_entries_per_variable);
-                        IndexedValue *attribute_data_j_value_array = data_value_arrays + (aj * num_variables * num_entries_per_variable);
-
-                        // Create pointers to the current variable buffers
-                        double *variable_data_i = attribute_data_i + (i * num_entries_per_variable);
-                        double *variable_data_j = attribute_data_j + (j * num_entries_per_variable);
-                        IndexedValue *variable_data_i_value_array = attribute_data_i_value_array + (i * num_entries_per_variable);
-                        IndexedValue *variable_data_j_value_array = attribute_data_j_value_array + (j * num_entries_per_variable);
-
-                        // Estimate generalized correlation coefficient
-                        double corr = _estimate_corr_fast(
-                            variable_data_i,
-                            variable_data_j,
-                            variable_data_i_value_array,
-                            variable_data_j_value_array,
-                            psi_values,
-                            num_entries_per_variable,
-                            k
-                        );
-
-                        // If calculated correlation is negative set it to 0
-                        corr = (corr >= 0) ? corr : 0;
-                        data_matrix[i * num_variables + j] += pow(corr, p);
-                        num_correlations++;
-                    }
-                }
-            }
-
-            // Complete generalized mean calculation based on p
-            if (num_correlations > 0) {
-                data_matrix[i * num_variables + j] = pow(data_matrix[i * num_variables + j] / num_correlations, (1. / p));
-            }
-
-            // Use symmetry to save on computation
-            data_matrix[j * num_variables + i] = data_matrix[i * num_variables + j];
-        }
-    }
-
-    return data_matrix;
 }
 
 int next_var;
