@@ -478,9 +478,20 @@ void *threaded_combine_mi(void *args) {
     int p = thread_args->p;
 
     // Allocate heap memory to be used by the thread
-    Point *point_array = malloc(sizeof(Point) * num_entries_per_variable);
-    KDTree *kdtree_array = malloc(sizeof(KDTree) * num_entries_per_variable);
-    double *eps = malloc(sizeof(double) * num_entries_per_variable);
+    void *total_buffer = malloc(
+        num_entries_per_variable * sizeof(Point) +
+        num_entries_per_variable * sizeof(KDTree) +
+        num_entries_per_variable * sizeof(double)
+    );
+
+    if (total_buffer == NULL) {
+        fprintf(stderr, "Error allocating memory for GCC computation");
+        exit(1);
+    }
+
+    Point *point_array = (Point *) total_buffer;
+    KDTree *kdtree_array = (KDTree *) (point_array + num_entries_per_variable);
+    double *eps = (double *) (kdtree_array + num_entries_per_variable);
 
     // Represents index into current variable to work on
     int i;
@@ -560,8 +571,25 @@ void *threaded_combine_mi(void *args) {
 
 double *threaded_combine_mi_starter(double *data, int num_attributes, int num_variables, int num_entries_per_variable, int k, int p, int num_threads) {
 	printf("starting\n");
+
+    // Allocate memory needed for computation
+    void *total_buffer = malloc(
+        (num_variables * num_variables + MAX_NUM_VALUES) * sizeof(double) +
+        (num_attributes * num_variables) * sizeof(int) +
+        (num_attributes * num_variables * num_entries_per_variable) * sizeof(IndexedValue)
+    );
+
+    if (total_buffer == NULL) {
+        fprintf(stderr, "Error allocating memory for GCC computation");
+        exit(1);
+    }
+
+    double *data_matrix = (double *) total_buffer;
+    double *psi_values = data_matrix + (num_variables * num_variables);
+    int *valid_values = (int *) (psi_values + MAX_NUM_VALUES);
+    IndexedValue *data_value_arrays = (IndexedValue *) (valid_values + (num_attributes * num_variables));
+
     // Determine valid attributes for each variable
-    int *valid_values = malloc(sizeof(int) * num_attributes * num_variables);
     for (int i = 0; i < num_attributes; i++) {
     	for (int j = 0; j < num_variables; j++) {
             valid_values[(i * num_variables) + j] = 1;
@@ -574,7 +602,6 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
     }
 
     // Compute psi values
-    double *psi_values = malloc(sizeof(double) * MAX_NUM_VALUES);
     for (int i = 1; i <= num_entries_per_variable; i++) {
         psi_values[i] = psi(i);
     }
@@ -596,7 +623,6 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
     }
 
     // Sorted arrays compute once
-    IndexedValue *data_value_arrays = malloc(sizeof(IndexedValue) * num_attributes * num_variables * num_entries_per_variable);
     for (int i = 0; i < num_attributes; i++) {
         // Calculate offset into the current attribute data buffer
         int attribute_data_offset = i * num_variables * num_entries_per_variable;
@@ -624,9 +650,6 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
             qsort(variable_data_value_array, num_entries_per_variable, sizeof(IndexedValue), compare_value);
         }
     }
-
-    // Allocate data matrix
-    double *data_matrix = malloc(sizeof(double) * num_variables * num_variables);
 
     // Initialize next var lock and value
     pthread_mutex_init(&next_var_lock, NULL);
@@ -689,12 +712,18 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Allocate buffer to store data
-    double *data_buffer = malloc(sizeof(double) * MAX_VARIABLES * MAX_NUM_VALUES * num_files);
+    // Allocate buffer for reading input data
+    void *input_buffer = malloc((MAX_VARIABLES * MAX_NUM_VALUES * num_files) * sizeof(double) + (file_str_len + 1) * sizeof(char));
+    if (input_buffer == NULL) {
+        fprintf(stderr, "Error allocating memory for reading csv");
+        exit(1);
+    }
+
+    double *data_buffer = (double *) input_buffer;
+    char *file_name_buffer = (char *) (data_buffer + (MAX_VARIABLES * MAX_NUM_VALUES * num_files));
 
     // Read data files
     DataShape data_shape = { .num_variables=0, .num_entries_per_variable=0 };
-    char *file_name_buffer = malloc(sizeof(char) * (file_str_len + 1));
     int write_index = 0;
     int file_counter = 0;
     for (int i = 0; i < file_str_len + 1; i++) {
@@ -724,9 +753,8 @@ int main(int argc, char *argv[]) {
     save_data_matrix(argv[2], data_matrix, data_shape.num_variables);
 
     // Free allocated memory
-    free(data_buffer);
+    free(input_buffer);
     free(data_matrix);
-    free(file_name_buffer);
 
     return 0;
 }
