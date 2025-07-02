@@ -5,11 +5,6 @@
 #include <string.h>
 #include <pthread.h>
 
-/* Constants */
-#define MAX_NUM_VALUES 267600
-#define MAX_VARIABLES 95
-#define MAX_K_VALUE 5
-
 /* Struct definitions */
 typedef struct data_shape {
     int num_variables;
@@ -320,9 +315,8 @@ void find_knearest_neighbour_distance_helper(KDTree *kdtree_array, Point *point_
  * Returns the distance between the given point and its kth nearest neighbour in
  * the point array
  */
-double find_knearest_neighbour_distance(KDTree *kdtree_array, Point *point_array, int length, Point point, int k) {
+double find_knearest_neighbour_distance(KDTree *kdtree_array, Point *point_array, int length, Point point, double *min_distance_array, int k) {
     // Initialize min distance array
-    double min_distance_array[MAX_K_VALUE];
     for (int i = 0; i < k; i++) {
         min_distance_array[i] = DBL_MAX;
     }
@@ -359,7 +353,7 @@ void normalize_data_set(double *array, int length) {
     }
 }
 
-double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, int k) {
+double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, double *min_distance_array, int k) {
     // Construct point array
     for (int i = 0; i < length; i++) {
         point_array[i].coords[0] = x[x_value_array[i].index];
@@ -372,7 +366,7 @@ double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_arra
     // Calculate epsilon values
     for (int i = 0; i < length; i++) {
         Point point = { .coords[0] = x[i], .coords[1] = y[i] };
-        eps[i] = find_knearest_neighbour_distance(kdtree_array, point_array, length, point, k + 1);
+        eps[i] = find_knearest_neighbour_distance(kdtree_array, point_array, length, point, min_distance_array, k + 1);
     }
 
     // Calculate psi average based on x, y, and epsilon
@@ -381,12 +375,29 @@ double _estimate_mi_fast_thread(double *x, double *y, IndexedValue *x_value_arra
     return psi_values[length] + psi_values[k] - psi_avg;
 }
 
-double _estimate_corr_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, int k) {
-    double mi = _estimate_mi_fast_thread(x, y, x_value_array, y_value_array, psi_values, point_array, kdtree_array, eps, length, k);
+double _estimate_corr_fast_thread(double *x, double *y, IndexedValue *x_value_array, IndexedValue *y_value_array, double *psi_values, Point *point_array, KDTree *kdtree_array, double *eps, int length, double *min_distance_array, int k) {
+    double mi = _estimate_mi_fast_thread(x, y, x_value_array, y_value_array, psi_values, point_array, kdtree_array, eps, length, min_distance_array, k);
     return mi <= 0 ? mi : sqrt(1 - exp(-2 * mi));
 }
 
 /* --- Public API methods --- */
+
+/*
+ * Parses the string as a positive integer.
+ */
+int parse_positive_int(char *str, char *value_name) {
+    char *endptr;
+    long value = strtol(str, &endptr, 10);
+    if (endptr == str || *endptr != '\0') {
+        fprintf(stderr, "Error parsing %s as an integer\n", value_name);
+        exit(1);
+    } else if (value <= 0) {
+        fprintf(stderr, "%s must be positive");
+        exit(1);
+    }
+
+    return (int) value;
+}
 
 /*
  * Reads in data from a csv file.
@@ -481,7 +492,7 @@ void *threaded_combine_mi(void *args) {
     void *total_buffer = malloc(
         num_entries_per_variable * sizeof(Point) +
         num_entries_per_variable * sizeof(KDTree) +
-        num_entries_per_variable * sizeof(double)
+        (num_entries_per_variable + (k + 1)) * sizeof(double)
     );
 
     if (total_buffer == NULL) {
@@ -492,6 +503,7 @@ void *threaded_combine_mi(void *args) {
     Point *point_array = (Point *) total_buffer;
     KDTree *kdtree_array = (KDTree *) (point_array + num_entries_per_variable);
     double *eps = (double *) (kdtree_array + num_entries_per_variable);
+    double *min_distance_array = eps + num_entries_per_variable;
 
     // Represents index into current variable to work on
     int i;
@@ -539,6 +551,7 @@ void *threaded_combine_mi(void *args) {
                             kdtree_array,
                             eps,
                             num_entries_per_variable,
+                            min_distance_array,
                             k
                         );
 
@@ -574,9 +587,10 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
 
     // Allocate memory needed for computation
     void *total_buffer = malloc(
-        (num_variables * num_variables + MAX_NUM_VALUES) * sizeof(double) +
+        (num_variables * num_variables + (num_entries_per_variable + 1)) * sizeof(double) +
         (num_attributes * num_variables) * sizeof(int) +
-        (num_attributes * num_variables * num_entries_per_variable) * sizeof(IndexedValue)
+        (num_attributes * num_variables * num_entries_per_variable) * sizeof(IndexedValue) +
+        (num_threads) * sizeof(pthread_t)
     );
 
     if (total_buffer == NULL) {
@@ -586,8 +600,10 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
 
     double *data_matrix = (double *) total_buffer;
     double *psi_values = data_matrix + (num_variables * num_variables);
-    int *valid_values = (int *) (psi_values + MAX_NUM_VALUES);
+    int *valid_values = (int *) (psi_values + (num_entries_per_variable + 1));
     IndexedValue *data_value_arrays = (IndexedValue *) (valid_values + (num_attributes * num_variables));
+
+    pthread_t *tid = (pthread_t *) (data_value_arrays + (num_attributes * num_variables * num_entries_per_variable));
 
     // Determine valid attributes for each variable
     for (int i = 0; i < num_attributes; i++) {
@@ -672,7 +688,6 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
     printf("spinning\n");
 
     // Spin up threads
-    pthread_t tid[MAX_VARIABLES];
     for (int i = 0; i < num_threads; i++) {
     	pthread_create(&(tid[i]), NULL, &threaded_combine_mi, (void *) &thread_args);
     }
@@ -691,15 +706,35 @@ double *threaded_combine_mi_starter(double *data, int num_attributes, int num_va
 /* -- Main -- */
 
 /*
- * First argument should be a comma separated sequence of paths to data files which are csv's of shape
- * (number of variables x number of entries per variable)
+ * Computes a generalized correlation coefficient matrix of the given data using
+ * the Kraskov Estimator and writes it to a CSV file.
  *
- * Second argument should be the output file
+ * The first argument should be a comma separated sequence of paths to CSV files
+ * of shape (num_variables, num_entries_per_variable). If a variable does not
+ * contain valid values, its row should be filled by 'nan'.
+ *
+ * The second and third arguments should be integers which are greater than or
+ * equal to the number of rows and columns of the csv's respectively.
+ *
+ * The fourth and fifth arguments should be p and k, which are used for
+ * computing the generalized mean and determining the number of neighbours to
+ * consider in the Kraskov Estimator, respectively.
+ *
+ * The sixth argument should be the name of the output file to write the MI
+ * matrix to as a CSV.
+ *
+ * The seventh argument should be the number of threads to use for the
+ * computation.
+ *
+ * Example:
+ * ```
+ * ./threaded_continuous_gcc_avg phi.csv,psi.csv 100 300000 1 3 output.csv 4
+ * ```
  */
 int main(int argc, char *argv[]) {
     // Checks for correct number of arguments
-    if (argc != 5) {
-        printf("Expected 5 arguments\n");
+    if (argc != 8) {
+        printf("Expected 7 arguments besides the program name\n");
         exit(1);
     }
 
@@ -712,20 +747,29 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Parse numerical command line arguments
+    int num_rows_limit = parse_positive_int(argv[2], "number of rows");
+    int num_cols_limit = parse_positive_int(argv[3], "number of columns");
+
+    int p = parse_positive_int(argv[4], "p");
+    int k = parse_positive_int(argv[5], "k");
+    int num_threads = parse_positive_int(argv[7], "number of threads");
+
     // Allocate buffer for reading input data
-    void *input_buffer = malloc((MAX_VARIABLES * MAX_NUM_VALUES * num_files) * sizeof(double) + (file_str_len + 1) * sizeof(char));
+    void *input_buffer = malloc((num_rows_limit * num_cols_limit * num_files) * sizeof(double) + (file_str_len + 1) * sizeof(char));
     if (input_buffer == NULL) {
         fprintf(stderr, "Error allocating memory for reading csv");
         exit(1);
     }
 
     double *data_buffer = (double *) input_buffer;
-    char *file_name_buffer = (char *) (data_buffer + (MAX_VARIABLES * MAX_NUM_VALUES * num_files));
+    char *file_name_buffer = (char *) (data_buffer + (num_rows_limit * num_cols_limit * num_files));
 
     // Read data files
-    DataShape data_shape = { .num_variables=0, .num_entries_per_variable=0 };
     int write_index = 0;
     int file_counter = 0;
+    DataShape data_shape = { .num_variables=0, .num_entries_per_variable=0 };
+
     for (int i = 0; i < file_str_len + 1; i++) {
         if (argv[1][i] == ',' || argv[1][i] == '\0') {
             // Terminate current file name, read contents, and reset write counter
@@ -742,15 +786,11 @@ int main(int argc, char *argv[]) {
 
     printf("Loaded\n");
 
-    // Extract k and p values
-    int k = atoi(argv[3]);
-    int p = atoi(argv[4]);
-
     // Estimate MI
-    double *data_matrix = threaded_combine_mi_starter(data_buffer, num_files, data_shape.num_variables, data_shape.num_entries_per_variable, k, p, 80);
+    double *data_matrix = threaded_combine_mi_starter(data_buffer, num_files, data_shape.num_variables, data_shape.num_entries_per_variable, k, p, num_threads);
 
     // Write data to file
-    save_data_matrix(argv[2], data_matrix, data_shape.num_variables);
+    save_data_matrix(argv[6], data_matrix, data_shape.num_variables);
 
     // Free allocated memory
     free(input_buffer);
