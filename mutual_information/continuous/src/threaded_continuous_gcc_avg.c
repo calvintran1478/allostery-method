@@ -100,11 +100,11 @@ double query_ball_point_fast(IndexedValue *value_array, int length, double *radi
         int left_index = -1;
         while (lower_index >= 0 && value_array[i].value - value_array[lower_index].value < radius) {
             lower_index -= step;
-            step << 1;
+            step = step << 1;
         }
 
         // Reverse previous step to get higher index
-        step >> 1;
+        step = step >> 1;
         higher_index = lower_index + step;
 
         // Perform iterative binary search to find left index (left and right indices are inclusive)
@@ -132,11 +132,11 @@ double query_ball_point_fast(IndexedValue *value_array, int length, double *radi
         int right_index = -1;
         while (higher_index < length && value_array[higher_index].value - value_array[i].value < radius) {
             higher_index += step;
-            step << 1;
+            step = step << 1;
         }
 
         // Reverse previous step to get higher index
-        step >> 1;
+        step = step >> 1;
         lower_index = higher_index - step;
 
         // Perform iterative binary search to find left index (left and right indices are inclusive)
