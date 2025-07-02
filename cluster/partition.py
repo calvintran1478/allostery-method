@@ -1,8 +1,7 @@
 from argparse import ArgumentParser
-from numpy.typing import NDArray
-import numpy as np
+import csv
 
-def create_partition(mi_matrix: NDArray[np.float64], alpha: float) -> dict[int, list[int]]:
+def create_partition(mi_matrix, alpha: float) -> dict[int, list[int]]:
     """
     Creates a partitioning of residues parameterized by a choice of alpha
     (0 <= alpha <= 1) based on their mutual information matrix . Two residues
@@ -11,11 +10,11 @@ def create_partition(mi_matrix: NDArray[np.float64], alpha: float) -> dict[int, 
     equal to alpha.
 
     Parameters:
-        `mi_matrix` - A numpy array of shape (num_residues, num_residues), where each entry is a value between 0 and 1.
+        `mi_matrix` - A square matrix of shape (num_residues, num_residues), where each entry is a value between 0 and 1.
         `alpha` - A threshold value which determines the minimum correlation needed between any two adjacent residues in the path
     """
     # Initialize variables
-    num_residues = mi_matrix.shape[0]
+    num_residues = len(mi_matrix)
     ungrouped_residues = list(range(num_residues))
     partitions = dict()
 
@@ -84,11 +83,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load data
-    data = np.loadtxt(args.mifile, dtype=float, delimiter=',')
-    for x in range(data.shape[0]):
-        for y in range(data.shape[1]):
-            if data[x][y] < 0:
-                data[x][y] = 0
+    with open(args.mifile) as csvfile:
+        reader = csv.reader(csvfile, delimiter=',')
+        data = tuple(tuple(float(x) for x in row) for row in reader)
 
     # If no alpha value is given pick one which optimizes for a specific value
     if args.alpha == None:
