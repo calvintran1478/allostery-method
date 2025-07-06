@@ -7,7 +7,7 @@ alias VertexEntry = NamedTuple(vertex: Int32, key: Float64, parent: Int32)
 
 # Undirected graph containing a fixed number of nodes.
 #
-# Only accepts positive edge weights.
+# Only accepts nonnegative edge weights.
 class Graph
   getter num_nodes : Int32
   getter num_edges : Int32
@@ -41,7 +41,7 @@ class Graph
     (1...num_rows).each { |i| @offset_buffer[i] = @offset_buffer[i-1] + (num_nodes - i) }
 
     # Clear edge buffer
-    @buffer.clear(@num_edges)
+    @num_edges.times { |i| @buffer[i] = -1 }
 
     # Set initial weight to 0
     @weight = 0
@@ -65,7 +65,7 @@ class Graph
     LibC.free(@buffer) if @self_allocated
   end
 
-  # Returns the edge weight between vertices i and j if it exists, and 0
+  # Returns the edge weight between vertices i and j if it exists, and -1
   # otherwise.
   def get_edge(i : Int32, j : Int32) : Float64
     (i < j) ? @buffer[@offset_buffer[i] + (j - i - 1)] : @buffer[@offset_buffer[j] + (i - j - 1)]
@@ -74,7 +74,7 @@ class Graph
   # Adds an edge between nodes i and j with the given weight.
   #
   # Assumes there is no prior edge between nodes i and j and that the weight is
-  # positive.
+  # nonnegative.
   def add_edge(i : Int32, j : Int32, weight : Float64) : Nil
     if i < j
       @buffer[@offset_buffer[i] + (j - i - 1)] = weight
@@ -92,7 +92,7 @@ class Graph
     index = (i < j) ? @offset_buffer[i] + (j - i - 1) : @offset_buffer[j] + (i - j - 1)
 
     @weight -= @buffer[index]
-    @buffer[index] = 0
+    @buffer[index] = -1
   end
 
   # Copies self into the given graph.
@@ -191,7 +191,7 @@ class Graph
     (@num_nodes - 1).times do |i|
       j = i + 1
       while j < @num_nodes
-        yield ({i, j, @buffer[index]}) if @buffer[index] != 0
+        yield ({i, j, @buffer[index]}) if @buffer[index] != -1
         j += 1
         index += 1
       end
@@ -245,7 +245,7 @@ class Graph
   # ```
   def get_disjoint_edges(other : Graph, &block : Edge ->) : Nil
     each_edge do |i, j, weight|
-      yield ({i, j, weight}) if other.get_edge(i, j) == 0
+      yield ({i, j, weight}) if other.get_edge(i, j) == -1
     end
   end
 
@@ -400,7 +400,7 @@ class Graph
     @num_nodes.times do |i|
       j = i + 1
       while j < @num_nodes
-        edge_value = 0.0
+        edge_value = -1.0
         k.times do |l|
           edge_value = Math.max(edge_value, k_MSTs[l].get_edge(i, j))
         end
