@@ -59,6 +59,13 @@ class Graph
     (num_edges * sizeof(Float64)) + (num_rows * sizeof(Int32))
   end
 
+  # Returns the index into self.buffer which gives the edge weight between nodes
+  # i and j.
+  @[AlwaysInline]
+  private def get_edge_index(i : Int32, j : Int32) : Int32
+    (i < j) ? @offset_buffer[i] + (j - i - 1) : @offset_buffer[j] + (i - j - 1)
+  end
+
   # Frees internal resources used by the graph when the graph is eventually
   # garbage collected.
   def finalize
@@ -67,8 +74,9 @@ class Graph
 
   # Returns the edge weight between vertices i and j if it exists, and -1
   # otherwise.
+  @[AlwaysInline]
   def get_edge(i : Int32, j : Int32) : Float64
-    (i < j) ? @buffer[@offset_buffer[i] + (j - i - 1)] : @buffer[@offset_buffer[j] + (i - j - 1)]
+    @buffer[get_edge_index(i, j)]
   end
 
   # Adds an edge between nodes i and j with the given weight.
@@ -76,12 +84,7 @@ class Graph
   # Assumes there is no prior edge between nodes i and j and that the weight is
   # nonnegative.
   def add_edge(i : Int32, j : Int32, weight : Float64) : Nil
-    if i < j
-      @buffer[@offset_buffer[i] + (j - i - 1)] = weight
-    elsif
-      @buffer[@offset_buffer[j] + (i - j - 1)] = weight
-    end
-
+    @buffer[get_edge_index(i, j)] = weight
     @weight += weight
   end
 
@@ -89,7 +92,7 @@ class Graph
   #
   # If no edge exists between vertices i and j no changes are made to the graph.
   def remove_edge(i : Int32, j : Int32) : Nil
-    index = (i < j) ? @offset_buffer[i] + (j - i - 1) : @offset_buffer[j] + (i - j - 1)
+    index = get_edge_index(i, j)
 
     @weight -= @buffer[index]
     @buffer[index] = -1
