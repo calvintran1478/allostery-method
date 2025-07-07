@@ -192,10 +192,8 @@ class Graph
   def each_edge(&block : Edge ->) : Nil
     index = 0
     (@num_nodes - 1).times do |i|
-      j = i + 1
-      while j < @num_nodes
+      (i + 1...@num_nodes).each do |j|
         yield ({i, j, @buffer[index]}) if @buffer[index] != -1
-        j += 1
         index += 1
       end
     end
