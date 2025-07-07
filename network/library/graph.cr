@@ -437,6 +437,19 @@ class Graph
   # Returns whether the graphs have the same edges.
   #
   # Assumes that they have the same number of nodes.
+  #
+  # ```
+  # G1 = Graph.new(3)
+  # G2 = Graph.new(3)
+  # G1.add_edge(0, 1, weight: 1)
+  # G2.add_edge(0, 1, weight: 1)
+  #
+  # print(G1 == G2) # => true
+  #
+  # G2.add_edge(1, 2, weight: 2)
+  #
+  # print(G1 == G2) # => false
+  # ```
   def ==(other : Graph) : Bool
     # Check that both graphs have the same weight
     return false if @weight != other.weight
