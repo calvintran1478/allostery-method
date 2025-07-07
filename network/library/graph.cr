@@ -30,20 +30,17 @@ class Graph
   # ```
   def initialize(@num_nodes : Int32, buffer : Float64* | Nil = nil) : Nil
     # Allocate buffer for storing graph data or set buffer to the one provided
-    num_rows = num_nodes - 1
     @num_edges = (num_nodes * (num_nodes - 1)) >> 1
-    @buffer = !buffer.nil? ? buffer : LibC.malloc(@num_edges * sizeof(Float64) + num_rows * sizeof(Int32)).as(Float64*)
+    @buffer = !buffer.nil? ? buffer : LibC.malloc(get_required_buffer_size(num_nodes)).as(Float64*)
     @self_allocated = buffer.nil?
 
     # Calculate offsets for quick edge weight lookup
     @offset_buffer = (@buffer + @num_edges).as(Int32*)
     @offset_buffer[0] = 0
-    (1...num_rows).each { |i| @offset_buffer[i] = @offset_buffer[i-1] + (num_nodes - i) }
+    (1...num_nodes - 1).each { |i| @offset_buffer[i] = @offset_buffer[i-1] + (num_nodes - i) }
 
-    # Clear edge buffer
+    # Clear edge buffer and set initial weight to 0
     @num_edges.times { |i| @buffer[i] = -1 }
-
-    # Set initial weight to 0
     @weight = 0
   end
 
