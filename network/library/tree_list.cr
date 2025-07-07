@@ -11,6 +11,11 @@ class TreeList
 
     # Allocate memory for storing tree data
     total_buffer = LibC.malloc((k + 1) * sizeof(Graph) + (k + 1) * @graph_size)
+    if total_buffer.null?
+      puts "Error allocating memory for tree list"
+      exit 1
+    end
+
     @trees = total_buffer.as(Pointer(Graph))
     @tree_buffer = (total_buffer.as(Pointer(Graph)) + (k + 1)).as(Pointer(Float64))
 

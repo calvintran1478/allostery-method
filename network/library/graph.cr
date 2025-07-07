@@ -31,8 +31,14 @@ class Graph
   def initialize(@num_nodes : Int32, buffer : Float64* | Nil = nil) : Nil
     # Allocate buffer for storing graph data or set buffer to the one provided
     @num_edges = (num_nodes * (num_nodes - 1)) >> 1
-    @buffer = !buffer.nil? ? buffer : LibC.malloc(get_required_buffer_size(num_nodes)).as(Float64*)
     @self_allocated = buffer.nil?
+    @buffer = !buffer.nil? ? buffer : LibC.malloc(Graph.get_required_buffer_size(num_nodes)).as(Float64*)
+
+    # Check if memory allocation is successful
+    if @buffer.null?
+      puts "Error allocating memory for graph"
+      exit 1
+    end
 
     # Calculate offsets for quick edge weight lookup
     @offset_buffer = (@buffer + @num_edges).as(Int32*)
@@ -129,6 +135,11 @@ class Graph
     # Initialize min-priority queue for quickly finding which node is closest to
     # the current tree. Also stores which connections the MST should have
     vertex_buffer = LibC.malloc(@num_nodes * sizeof(VertexEntry)).as(Pointer(VertexEntry))
+    if vertex_buffer.null?
+      puts "Error allocating memory for MST calculation"
+      exit 1
+    end
+
     @num_nodes.times { |i| vertex_buffer[i] = {vertex: i, key: Float64::INFINITY, parent: -1} }
 
     # Initialize root as starting node for MST construction
@@ -326,10 +337,19 @@ class Graph
     tree_lst.add_temp_tree
 
     k_MSTs = LibC.malloc(k * sizeof(Graph)).as(Pointer(Graph))
+    if k_MSTs.null?
+      puts "Error allocating memory for k least-weighted spanning trees calculation"
+      exit 1
+    end
     k_MSTs[0] = tree_lst.select_min
 
     # Allocate memory for working with edges
     buffer = LibC.malloc(@num_nodes * sizeof(Edge) + ((@num_nodes + 2) * @num_nodes) * sizeof(Int32))
+    if buffer.null?
+      puts "Error allocating memory for k least-weighted spanning trees calculation"
+      exit 1
+    end
+
     cycle_edges = buffer.as(Pointer(Edge))
     adjacency_list_buffer = (cycle_edges + @num_nodes).as(Pointer(Int32))
     frontier = (adjacency_list_buffer + (@num_nodes * @num_nodes))
