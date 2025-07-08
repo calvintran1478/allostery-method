@@ -415,15 +415,13 @@ class Graph
 
     # Combine these trees into a single network by unioning them together
     network = Graph.new(@num_nodes)
-    @num_nodes.times do |i|
-      j = i + 1
-      while j < @num_nodes
+    (@num_nodes - 1).times do |i|
+      (i + 1...@num_nodes).each do |j|
         edge_value = -1.0
         k.times do |l|
           edge_value = Math.max(edge_value, k_MSTs[l].get_edge(i, j))
         end
         network.add_edge(i, j, edge_value)
-        j += 1
       end
     end
 
