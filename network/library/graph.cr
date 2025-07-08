@@ -459,6 +459,14 @@ class Graph
   end
 
   # Prints edges of the graph to the given io
+  #
+  # ```
+  # G1 = Graph.new(3)
+  # G1.add_edge(0, 1, weight: 1)
+  # G1.add_edge(1, 2, weight: 2)
+  #
+  # print(G1) # => [(0, 1, weight=1.0), (1, 2, weight=2.0)]
+  # ```
   def to_s(io : IO) : Nil
     index = 0
     first = true
