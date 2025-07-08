@@ -7,10 +7,10 @@ require "./graph"
 class TreeList
   def initialize(@k : Int32, @num_nodes : Int32)
     # Determine graph size based on number of nodes
-    @graph_size = Graph.get_required_buffer_size(@num_nodes)
+    graph_size = Graph.get_required_buffer_size(@num_nodes)
 
     # Allocate memory for storing tree data
-    total_buffer = LibC.malloc((k + 1) * sizeof(Graph) + (k + 1) * @graph_size)
+    total_buffer = LibC.malloc((k + 1) * sizeof(Graph) + (k + 1) * graph_size)
     if total_buffer.null?
       puts "Error allocating memory for tree list"
       exit 1
@@ -21,7 +21,7 @@ class TreeList
 
     # Initialize trees to use the allocated buffers
     (k+1).times do |i|
-      buffer = (@tree_buffer.as(Int8*) + @graph_size).as(Float64*)
+      buffer = (@tree_buffer.as(Int8*) + graph_size).as(Float64*)
       @trees[i] = Graph.new(@num_nodes, buffer)
       @trees[i].weight = Float64::INFINITY
     end
