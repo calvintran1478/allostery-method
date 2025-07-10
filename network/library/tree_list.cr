@@ -1,9 +1,6 @@
 require "./graph"
 
 # Maintains k trees in sorted order from greatest total weight to least.
-#
-# Internally stores a list of tuples where the first element is the tree and the
-# second is its total edge sum.
 class TreeList
   def initialize(@k : Int32, @num_nodes : Int32)
     # Determine graph size based on number of nodes
@@ -21,29 +18,58 @@ class TreeList
 
     # Initialize trees to use the allocated buffers
     (k+1).times do |i|
-      buffer = (@tree_buffer.as(Int8*) + graph_size).as(Float64*)
+      buffer = (@tree_buffer.as(UInt8*) + graph_size).as(Float64*)
       @trees[i] = Graph.new(@num_nodes, buffer)
       @trees[i].weight = Float64::INFINITY
     end
 
-    # Store current number of held trees (will change later)
     @length = k
   end
 
   # Returns the internal buffer used for storing tree data.
   #
   # Should only be accessed after work with the tree list is done in order to
-  # free this memory.
+  # free its memory.
   def buffer : Void*
     @trees.as(Void*)
   end
 
   # Returns a reference to the tree whose contents should be written to for the
-  # next add
+  # next add.
+  #
+  # This should be done by copying an existing graph into the one provided. (No
+  # guarantees are made to the validity of the returned graph, so edges should
+  # not be added or removed before the graph is overriden).
+  #
+  # This mechanism mainly serves to avoid allocating new graph objects by
+  # reusing ones that are unneeded.
   def get_temp_tree : Graph
     @trees[@k]
   end
 
+  # Adds temp tree to the list if it is not already in the list and may be one
+  # of the k least-weighted trees in the collection.
+  #
+  # ```
+  # tree_lst = TreeList.new(2)
+  #
+  # G1 = Graph.new(3)
+  # G1.add_edge(0, 1, weight: 3)
+  # G1.add_edge(1, 2, weight: 1)
+  #
+  # G1.copy_to(tree_lst.get_temp_tree)
+  # tree_lst.add_temp_tree
+  #
+  # G2 = Graph.new(3)
+  # G2.add_edge(0, 2, weight: 2)
+  #
+  # G2.copy_to(tree_lst.get_temp_tree)
+  # tree_lst.add_temp_tree
+  #
+  # print(tree_lst.select_min == G2) # => true
+  # tree_lst.remove_min
+  # print(tree_lst.select_min == G1) # => true
+  # ```
   def add_temp_tree : Nil
     if @trees[@k].weight <= @trees[0].weight
       # Search for placement index
@@ -70,13 +96,11 @@ class TreeList
   end
 
   # Removes the least-weighted tree currently held in this list.
-  #
-  # Also reduces the capacity of the list by 1.
   def remove_min : Nil
     @length -= 1
   end
 
-  # Returns the least-weighted tree in this list
+  # Returns the least-weighted tree in this list.
   def select_min : Graph
     @trees[@length - 1]
   end
