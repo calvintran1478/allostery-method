@@ -152,7 +152,6 @@ class Graph
 
       # Update priority queue by finding which node is now closest
       closest_vertex_index = i + 1
-      closest_weight = vertex_buffer[i + 1][:key]
       (i + 1...@num_nodes).each do |j|
         v = vertex_buffer[j]
 
@@ -160,9 +159,8 @@ class Graph
           vertex_buffer[j] = {vertex: v[:vertex], key: get_edge(u[:vertex], v[:vertex]), parent: u[:vertex]}
         end
 
-        if vertex_buffer[j][:key] < closest_weight
+        if vertex_buffer[j][:key] < vertex_buffer[closest_vertex_index][:key]
           closest_vertex_index = j
-          closest_weight = vertex_buffer[j][:key]
         end
       end
 
