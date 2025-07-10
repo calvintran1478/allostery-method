@@ -140,10 +140,9 @@ class Graph
       exit 1
     end
 
-    @num_nodes.times { |i| vertex_buffer[i] = {vertex: i, key: Float64::INFINITY, parent: -1} }
-
-    # Initialize root as starting node for MST construction
-    vertex_buffer[0] = {vertex: 0, key: 0.0, parent: -1}
+    @num_nodes.times do |i|
+      vertex_buffer[i] = {vertex: i, key: Float64::INFINITY, parent: -1}
+    end
 
     # Construct MST by iteratively adding nodes which are closest to the current
     # tree
@@ -152,33 +151,28 @@ class Graph
       u = vertex_buffer[i]
 
       # Update priority queue by finding which node is now closest
-      j = i + 1
-      closest_vertex_index = j
-      closest_weight = vertex_buffer[j][:key]
-      while j < @num_nodes
+      closest_vertex_index = i + 1
+      closest_weight = vertex_buffer[i + 1][:key]
+      (i + 1...@num_nodes).each do |j|
         v = vertex_buffer[j]
-        if 0 < get_edge(u[:vertex], v[:vertex]) < v[:key]
+
+        if 0 <= get_edge(u[:vertex], v[:vertex]) < v[:key]
           vertex_buffer[j] = {vertex: v[:vertex], key: get_edge(u[:vertex], v[:vertex]), parent: u[:vertex]}
         end
 
-        v = vertex_buffer[j]
-        if v[:key] < closest_weight
-          closest_vertex = v[:vertex]
-          closest_weight = v[:key]
+        if vertex_buffer[j][:key] < closest_weight
+          closest_vertex_index = j
+          closest_weight = vertex_buffer[j][:key]
         end
-
-        j += 1
       end
 
       # Move new closest node to the front of the queue
-      vertex_buffer[closest_vertex_index], vertex_buffer[i + 1] = vertex_buffer[i + 1], vertex_buffer[closest_vertex_index]
+      vertex_buffer.swap(closest_vertex_index, i + 1)
     end
 
     # Build MST from the determined edges
-    i = 1
-    while i < @num_nodes
+    (1...@num_nodes).each do |i|
       mst.add_edge(vertex_buffer[i][:vertex], vertex_buffer[i][:parent], get_edge(vertex_buffer[i][:vertex], vertex_buffer[i][:parent]))
-      i += 1
     end
 
     # Free allocated memory (we don't need the vertex buffer anymore)
