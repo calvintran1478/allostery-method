@@ -1,9 +1,9 @@
 require "./adjacency_list"
 require "./tree_list"
+require "./graph/vertex_entry"
 
 # Type aliases
 alias Edge = Tuple(Int32, Int32, Float64)
-alias VertexEntry = NamedTuple(vertex: Int32, key: Float64, parent: Int32)
 
 # Undirected graph containing a fixed number of nodes.
 #
@@ -109,10 +109,7 @@ class Graph
     other.weight = @weight
   end
 
-  # Writes the minimum spanning tree (MST) of self to the given graph.
-  #
-  # Assumes the given graph has the same number of nodes as self and contains
-  # no edges. MST construction is done using Prim's algorithm.
+  # Returns the minimum spanning tree (MST) of self using Prim's algorithm.
   #
   # Implementation Reference: Cormen, T.H., Leiserson, C.E., Rivest, R.L., &
   # Stein, C. (2009). Introduction to Algorithms, third edition.
@@ -123,58 +120,46 @@ class Graph
   # G1.add_edge(1, 2, weight: 2)
   # G1.add_edge(0, 2, weight: 3)
   #
-  # G2 = Graph.new(3)
-  # G1.write_minimum_spanning_tree(G2)
-  # print(G2) # => [(0, 1, weight=1), (1, 2, weight=2)]
+  # print(G1.get_minimum_spanning_tree) # => [(0, 1, weight=1), (1, 2, weight=2)]
   # ```
-  def write_minimum_spanning_tree(empty_graph : Graph) : Nil
-    # Initialize MST
-    mst = empty_graph
-    mst.weight = 0
-
-    # Initialize min-priority queue for quickly finding which node is closest to
-    # the current tree. Also stores which connections the MST should have
-    vertex_buffer = LibC.malloc(@num_nodes * sizeof(VertexEntry)).as(Pointer(VertexEntry))
-    if vertex_buffer.null?
-      puts "Error allocating memory for MST calculation"
-      exit 1
-    end
-
-    @num_nodes.times do |i|
-      vertex_buffer[i] = {vertex: i, key: Float64::INFINITY, parent: -1}
+  def get_minimum_spanning_tree : Graph
+    # Initialize a min-priority queue for quickly finding which node is closest
+    # to the current tree. This also stores which connections the MST should have
+    vertices = Slice(VertexEntry).new(@num_nodes) do |i|
+      VertexEntry.new(i, key: Float64::INFINITY, parent: -1)
     end
 
     # Construct MST by iteratively adding nodes which are closest to the current
     # tree
     (@num_nodes - 1).times do |i|
-      # Extract min (closest node) from the priority queue
-      u = vertex_buffer[i]
+      # Extract closest node to the current tree from the priority queue
+      u = vertices[i]
 
-      # Update priority queue by finding which node is now closest
+      # Update distances from each remaining node to the current tree and
+      # determine the new closest node
       closest_vertex_index = i + 1
-      (i + 1...@num_nodes).each do |j|
-        v = vertex_buffer[j]
-
-        if 0 <= get_edge(u[:vertex], v[:vertex]) < v[:key]
-          vertex_buffer[j] = {vertex: v[:vertex], key: get_edge(u[:vertex], v[:vertex]), parent: u[:vertex]}
+      vertices[i + 1...].each_with_index do |v, j|
+        if 0 <= get_edge(u.vertex, v.vertex) < v.key
+          v.parent = u.vertex
+          v.key = get_edge(u.vertex, v.vertex)
         end
 
-        if vertex_buffer[j][:key] < vertex_buffer[closest_vertex_index][:key]
+        if v.key < vertices[closest_vertex_index].key
           closest_vertex_index = j
         end
       end
 
-      # Move new closest node to the front of the queue
-      vertex_buffer.swap(closest_vertex_index, i + 1)
+      # Move the new closest node to the front of the queue
+      vertices.swap(closest_vertex_index, i + 1)
     end
 
-    # Build MST from the determined edges
-    (1...@num_nodes).each do |i|
-      mst.add_edge(vertex_buffer[i][:vertex], vertex_buffer[i][:parent], get_edge(vertex_buffer[i][:vertex], vertex_buffer[i][:parent]))
+    # Build MST from the determined edge relationships
+    mst = Graph.new(@num_nodes)
+    vertices[1...].each do |v|
+      mst.add_edge(v.vertex, v.parent, get_edge(v.vertex, v.parent))
     end
 
-    # Free allocated memory (we don't need the vertex buffer anymore)
-    LibC.free(vertex_buffer)
+    mst
   end
 
   # Iterates over each edge in the graph and yields the two endpoints of the
@@ -325,7 +310,7 @@ class Graph
   def get_k_minimum_spanning_trees(k : Int32) : Tuple(Graph*, Void*)
     # Compute first MST
     tree_lst = TreeList.new(k, @num_nodes)
-    write_minimum_spanning_tree(tree_lst.get_temp_tree)
+    self.get_minimum_spanning_tree.copy_to(tree_lst.get_temp_tree)
     tree_lst.add_temp_tree
 
     k_MSTs = LibC.malloc(k * sizeof(Graph)).as(Pointer(Graph))
