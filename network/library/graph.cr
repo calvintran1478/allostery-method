@@ -270,7 +270,7 @@ class Graph
   #
   #
   # ```
-  def find_cycle(starting_node : Int32, adjacency_list : AdjacencyList, edge_buffer : Pointer(Edge), frontier : Pointer(Int32), parent : Pointer(Int32)) : Int32
+  def find_cycle(starting_node : Int32, adjacency_list : AdjacencyList, edge_buffer : Pointer(Edge), frontier : Pointer(Int32), parent : Pointer(Int32)) : Slice(Edge)
     parent[starting_node] = -1
     frontier[0] = starting_node
     insert_pos = 1
@@ -305,7 +305,7 @@ class Graph
       i += 1
     end
 
-    i
+    Slice(Edge).new(edge_buffer, i)
   end
 
   # Returns the k least-weighted spanning trees from this graph.
@@ -342,13 +342,12 @@ class Graph
       exit 1
     end
 
-    cycle_edges = buffer.as(Pointer(Edge))
-    adjacency_list_buffer = (cycle_edges + @num_nodes).as(Pointer(Int32))
+    edge_buffer = buffer.as(Pointer(Edge))
+    adjacency_list_buffer = (edge_buffer + @num_nodes).as(Pointer(Int32))
     frontier = (adjacency_list_buffer + (@num_nodes * @num_nodes))
     parent_buffer = (frontier + @num_nodes)
 
-    i = 1
-    while i < k
+    (1...k).each do |i|
       tree_lst.remove_min
       adjacency_list = k_MSTs[i-1].get_adjacency_list(adjacency_list_buffer)
 
@@ -357,29 +356,20 @@ class Graph
         adjacency_list.add_edge(test_edge[0], test_edge[1])
 
         # Find cycle in the graph formed by adding the new edge
-        num_cycle_edges = k_MSTs[i-1].find_cycle(test_edge[0], adjacency_list, cycle_edges, frontier, parent_buffer)
+        cycle_edges = k_MSTs[i-1].find_cycle(test_edge[0], adjacency_list, edge_buffer, frontier, parent_buffer)
 
         # Determine weight criterion for exchange edges
-        weight_criterion = -1
-        if i == 1
-          num_cycle_edges.times do |l|
-            if weight_criterion < cycle_edges[l][2] <= test_edge[2] && cycle_edges[l] != test_edge
-              weight_criterion = cycle_edges[l][2]
-            end
-          end
-        elsif
-          num_cycle_edges.times do |l|
-            if weight_criterion < cycle_edges[l][2] < test_edge[2] && cycle_edges[l] != test_edge
-              weight_criterion = cycle_edges[l][2]
-            end
-          end
+        weight_criterion = if i == 1
+          cycle_edges.each.select(->(cycle_edge : Edge) { cycle_edge[2] <= test_edge[2] && cycle_edge[2] != test_edge }).max
+        else
+          cycle_edges.each.select(->(cycle_edge : Edge) { cycle_edge[2] < test_edge[2] && cycle_edge[2] != test_edge }).max
         end
 
         # Add candidate trees to tree list
-        num_cycle_edges.times do |l|
-          if cycle_edges[l][2] == weight_criterion
+        cycle_edges.each do |cycle_edge|
+          if cycle_edge[2] == weight_criterion
             k_MSTs[i-1].copy_to(tree_lst.get_temp_tree)
-            tree_lst.get_temp_tree.remove_edge(cycle_edges[l][0], cycle_edges[l][1])
+            tree_lst.get_temp_tree.remove_edge(cycle_edge[0], cycle_edge[1])
             tree_lst.add_temp_tree
           end
         end
@@ -390,7 +380,6 @@ class Graph
 
       # Record discovered tree
       k_MSTs[i] = tree_lst.select_min
-      i += 1
     end
 
     # Free allocated memory
